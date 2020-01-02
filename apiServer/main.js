@@ -6,15 +6,6 @@ const host = conf.crawlerHost;
 const port = conf.crawlerManagerPort;
 const childProcess = require('child_process');
 
-const mongoClient = require('mongodb').MongoClient('mongodb://' + conf.mongodbService);
-const mongoDbName = 'mockstagram';
-const mongoDbConnection = new Promise((rs, rj) => { mongoClient.connect((err, client) => { if (err) rj(err); rs(client.db(mongoDbName)); }); })
-const mongoCollection = new Promise(async (rs, rj) => {
-    let db = await mongoDbConnection;
-    rs(db.collection('crawlertasks'));
-});
-
-
 let workerStatus = {};
 let workerIDIter = port;
 let userStatus = {};
@@ -25,7 +16,7 @@ app.use(body_parser.json());
 async function startNewWorker(wID) {
     return new Promise(async (rs, rj) => {
         let processStatus = await childProcess.spawn('node', ['--max_old_space_size=8192',
-            '--optimize_for_size', '--stack_size=4096', '--nouse-idle-notification',
+            '--optimize_for_size', '--stack_size=4096','--nouse-idle-notification',
             './crawler/crawlerWorker.js', wID]);
         processStatus.stdout.on('data', async (data) => {
             console.log('stdout: ' + data);
@@ -48,11 +39,6 @@ async function startNewWorker(wID) {
 async function sendTaskToWorker(body, worker) {
     let retry = 0;
     let workerSvc = host + ':' + worker;
-    body.users.forEach(async x => {
-        userStatus[x] = worker;
-        let r = (await mongoCollection).updateOne({ 'name': x, 'worker': worker }, { '$set': { 'name': x, 'worker': worker } }, { upsert: true });
-    });
-
     return new Promise(async (rs, rj) => {
         while (1) {
             try {
@@ -81,13 +67,16 @@ app.get('/', (req, res) => {
 
 app.post('/start_crawling_users', async (req, res) => {
     let users = Array.from(new Set(req.body['users'])).filter(x => !(x in userStatus));
-
+    if (users.length > conf.crawlerUserLimitPerRequest) {
+        res.send({ 'error': 'Too many users per request, please keep to <= 3000 users for each request' });
+    }
     Object.keys(workerStatus).forEach(async worker => {
         let freeSpace = conf.crawlerWorkerLimit - workerStatus[worker];
         if (freeSpace > 0) {
             let usersToSend = users.slice(0, freeSpace);
             users = users.slice(freeSpace);
             await sendTaskToWorker({ 'users': usersToSend, 'intervalS': req.body['intervalS'] }, worker);
+            usersToSend.forEach(x => userStatus[x] = worker);
         }
     });
     // left overs
@@ -116,8 +105,6 @@ app.post('/stop_crawling_users', (req, res) => {
 
 (
     async () => {
-        a = (await mongoCollection)
-        b=await  a.count();
         app.listen(port, () => console.log('crawlerManager listening on port ' + port));
     }
 )()

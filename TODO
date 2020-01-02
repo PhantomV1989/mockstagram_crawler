@@ -1,1 +1,5 @@
-update prometheus targets when launching new worker
+Drop fields,
+API server,
+health check loop, from Prometheus, daily
+averages loop, minute
+calc scrape on push so can use Date.now() - old Date.now(), time diff

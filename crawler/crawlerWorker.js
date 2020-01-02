@@ -5,30 +5,50 @@ const util = require('../commonUtil');
 
 
 let crawlingTasks = {};
-let taskCount = 0; // ~200
+let taskCount = 0; // ~2000 to 3000
+let pusher = {};
+let port = 0;
+let pushgatewayService = '';
+
+async function pushDataInterval(intervalSeconds) {
+    return setInterval(async () => {
+        let scrapeContent = [];
+        Object.keys(crawlingTasks).forEach(x => {
+            let userLatestData = crawlingTasks[x];
+            let updatedTimeDifference = Math.round((Date.now() - userLatestData['lastUpdated']) / 10);
+            scrapeContent.push('follower_count{userid="' + x + '"} ' + userLatestData['followerCount']);
+            scrapeContent.push('following_count{userid="' + x + '"} ' + userLatestData['followingCount']);
+            scrapeContent.push('updated_time_difference_sec{userid="' + x + '"} ' + updatedTimeDifference);
+        });
+        let body = scrapeContent.join('\n') + '\n'
+        let res = await util.sendHttpRequest('post', body, pushgatewayService, '/metrics/job/' + port, 'application/x-www-form-urlencoded');
+
+    }, intervalSeconds);
+}
 
 function crawlingTaskInterval(user, intervalSeconds) {
-    // not meant to be resolved
     return setInterval(async () => {
         if (crawlingTasks[user]['cancellationToken']) {
             clearInterval(crawlingTasks[user]['task']);
             delete crawlingTasks[user];
             taskCount -= 1;
         } else {
-            let res = await util.sendHttpRequest('get', {}, conf.mockstagramApiService, '/api/v1/influencers/' + user);
-            if ('error' in res) {
-                crawlingTasks[user]['cancellationToken'] = true;
-                console.log(user + ' error:', res['error']);
-            } else {
-                crawlingTasks[user]['followerCount'] = res['followerCount'];
-                crawlingTasks[user]['followingCount'] = res['followingCount'];
-                crawlingTasks[user]['lastUpdated'] = Date.now();
-                crawlingTasks[user]['state'] = 'running';
-                crawlingTasks[user]['scrape'] = [
-                    'follower_count{userid="' + user + '"} ' + res['followerCount'],
-                    'following_count{userid="' + user + '"} ' + res['followingCount'],
-                ];
+            try {
+                let res = await util.sendHttpRequest('get', {}, conf.mockstagramApiService, '/api/v1/influencers/' + user);
+                if ('error' in res) {
+                    crawlingTasks[user]['cancellationToken'] = true;
+                    console.log('Task cancelled ' + user + ' error:', res['error']);
+                } else {
+                    crawlingTasks[user]['followerCount'] = res['followerCount'];
+                    crawlingTasks[user]['followingCount'] = res['followingCount'];
+                    crawlingTasks[user]['lastUpdated'] = Date.now();
+                    crawlingTasks[user]['state'] = 'running';
+                }
             }
+            catch (e) {
+                console.log(e);
+            }
+
         }
     }, intervalSeconds * 1000);
 }
@@ -76,6 +96,9 @@ app.post('/start_crawling_users', async (req, res) => {
             let users = req.body['users'];
             let intervalSeconds = req.body['intervalS'];
             let responses = users.map(x => x + ': ' + startUserCrawlingTask(x, intervalSeconds));
+            if (Object.keys(pusher).length == 0) {
+                pusher = pushDataInterval(intervalSeconds);
+            }
             res.send({
                 'current_task_count': taskCount//responses
             });
@@ -120,6 +143,8 @@ app.get('/metrics', (req, res) => { // standard metrics scrapping format, ~ 200 
 
 (
     async () => {
-        app.listen(process.argv[2], () => console.log('crawlerWorker listening on port ' + process.argv[2]));
+        port = process.argv[2];
+        pushgatewayService = process.argv[3];
+        app.listen(process.argv[2], () => console.log('crawlerWorker listening on port ' + process.argv[2] + ', push target at ', pushgatewayService));
     }
 )()

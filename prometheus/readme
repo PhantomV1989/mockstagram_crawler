@@ -1,2 +1,0 @@
-sudo docker run -p 9090:9090 --rm -v /home/phantomv/Desktop/interview/Affable/soln/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml -v /home/phantomv/Desktop/interview/Affable/soln/prometheus/targets.json:/etc/prometheus/targets.json --name prom prom/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --web.console.libraries=/usr/share/prometheus/console_libraries --web.console.templates=/usr/share/prometheus/consoles --web.enable-lifecycle
-curl -X POST http://localhost:9090/-/reload

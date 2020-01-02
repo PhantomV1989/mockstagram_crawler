@@ -1,0 +1,20 @@
+# for kubernetes
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mockstagram
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mockstagram
+  template:
+    metadata:
+      labels:
+        app: mockstagram
+    spec:
+      containers:
+      - name: mockstagram
+        image: phantomv/mockstagram:1.0
+        ports:
+        - containerPort: 3000

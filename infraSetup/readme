@@ -1,0 +1,46 @@
+###########Pushgateway1############
+sudo docker run --rm -p 9091:9091 prom/pushgateway
+
+###########Prometheus1############
+sudo docker run -p 9090:9090 --rm --network=host \
+-v /home/phantomv/Desktop/interview/Affable/soln/infraSetup/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml \
+-v /home/phantomv/Desktop/interview/Affable/soln/infraSetup/prometheus/targets.json:/etc/prometheus/targets.json \
+-v /home/phantomv/prometheus_thanos/prometheus:/prometheus \
+--name prom quay.io/prometheus/prometheus \
+--config.file=/etc/prometheus/prometheus.yml \
+--storage.tsdb.path=/prometheus \
+--storage.tsdb.retention.time=2h \
+--web.console.libraries=/usr/share/prometheus/console_libraries \
+--web.console.templates=/usr/share/prometheus/consoles \
+--web.enable-lifecycle \
+--web.enable-admin-api \
+--storage.tsdb.min-block-duration=1h \
+--storage.tsdb.max-block-duration=1h
+
+###########Thanos sidecar1############
+sudo docker run --rm --network=host \
+-v /home/phantomv/prometheus_thanos/prometheus:/var/prometheus \
+-v /home/phantomv/prometheus_thanos/storage:/objstore \
+-v /home/phantomv/Desktop/interview/Affable/soln/infraSetup/thanos/store.yml:/store.yml \
+--name thanos  docker.io/thanosio/thanos:master-2019-12-23-39f8623b sidecar \
+--prometheus.url http://localhost:9090 \
+--http-address 0.0.0.0:19191 \
+--grpc-address 0.0.0.0:19090 \
+--objstore.config-file  "/store.yml" \
+--tsdb.path /var/prometheus
+
+###########Thanos Storage1############
+sudo docker run --rm --network=host \
+-v /home/phantomv/prometheus_thanos/storage:/objstore \
+-v  /home/phantomv/Desktop/interview/Affable/soln/infraSetup/thanos/store.yml:/store.yml \
+--name thanos_store  docker.io/thanosio/thanos:master-2019-12-23-39f8623b store \
+--grpc-address 0.0.0.0:19091 \
+--objstore.config-file "/store.yml" 
+
+###########Thanos Querier############
+sudo docker run --rm --name thanos_querier  docker.io/thanosio/thanos:master-2019-12-23-39f8623b query --http-address 0.0.0.0:19192 --store 0.0.0.0:19090 --store 0.0.0.0:19091
+
+###########MongoDB############
+sudo docker run -p 27018:27017 --rm \
+-v /home/phantomv/mongodb_storage:/data/db \
+--name mongodb  mongo:3.6

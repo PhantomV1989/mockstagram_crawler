@@ -1,0 +1,11 @@
+# sudo docker build -t phantomv/mockstagram:1.0 . && sudo docker push phantomv/mockstagram:1.0
+FROM node:slim
+
+WORKDIR /app
+COPY . /app
+
+RUN npm install
+
+EXPOSE 3000
+
+CMD ["npm", "start"]

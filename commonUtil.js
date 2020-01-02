@@ -1,22 +1,25 @@
 const http = require("http");
+const agent = new http.Agent({ maxSockets: 10 }); // <-- this is new
 
-function sendHttpRequest(type, body, addr_port, route) {
+
+function sendHttpRequest(type, body, addr_port, route, contentType = 'application/json') {
     // sendHttpRequest('post',{'a':1},'123.123.123.23','/a')
     addr_port = addr_port.split(':');
     let host = addr_port[0];
     let port = addr_port[1];
     return new Promise((re, rj) => {
         try {
-            body = JSON.stringify(body);
+            body = typeof body === 'string' ? body : JSON.stringify(body);
             let post_options = {
                 host: host,
                 port: port,
                 path: route,
                 method: type,
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Content-Type': contentType,
                     'Content-Length': Buffer.byteLength(body)
-                }
+                },
+                agent: agent
             };
             let response = '';
             let postReq = http.request(post_options, function (res) {
@@ -35,13 +38,21 @@ function sendHttpRequest(type, body, addr_port, route) {
             }).on('error', (e) => {
                 rj(e)
             })
+            postReq.setNoDelay();
             postReq.write(body);
             postReq.end();
         } catch (e) {
             rj(e);
         }
-
     });
 }
 
+function sleep(ms) {
+    return new Promise(resolve => {
+        setTimeout(resolve, ms)
+    })
+}
+
+
 module.exports.sendHttpRequest = sendHttpRequest;
+module.exports.sleep = sleep;

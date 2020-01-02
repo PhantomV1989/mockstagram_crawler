@@ -4,12 +4,19 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+        // {
+        //     "type": "node",
+        //     "request": "launch",
+        //     "name": "worker",
+        //     "program": "${workspaceFolder}/crawler/crawlerWorker.js", //}/tests/stressTest.js"  /crawler/crawlerWorker.js" 
+        //     "args": ["6347","localhost:9091"]
+        // },
         {
             "type": "node",
             "request": "launch",
-            "name": "Launch Program",
-            "program": "${workspaceFolder}/crawler/crawlerManager.js", //}/tests/stressTest.js"  /crawler/crawlerWorker.js" 
-            "args": ["6347"]
+            "name": "runMe",
+            "program": "${workspaceFolder}/infraSetup/runMe.js", //}/tests/stressTest.js"  /crawler/crawlerWorker.js" 
+            "args": ["/home/gh/profiler_store"]
         }
     ]
 }

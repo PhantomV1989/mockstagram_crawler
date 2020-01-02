@@ -1,10 +1,11 @@
 const conf = require('../config');
 const util = require('../commonUtil');
 
-async function stressTestUserCount(count, intervalSeconds, svc) {
+// we will only use users with id ending in 1, eg. 1245241, as part of federated design
+async function stressTestUserCount(count, intervalSeconds, svc) {    
     let users = [];
     for (i = 0; i < count; i++) {
-        users.push(1E6 + Math.round(Math.random() * 1E6));
+        users.push((1E5 + Math.round(Math.random() * 1E5))*10+1); 
     }
     let r = await util.sendHttpRequest('post', {
         'users': users,
@@ -14,8 +15,8 @@ async function stressTestUserCount(count, intervalSeconds, svc) {
 
 (
     async () => {
-        stressTestUserCount(3, 1, conf.crawlerService);
-        //stressTestUserCount(200, 1, 'localhost:6347');
+        stressTestUserCount(1500, 1, conf.crawlerService);  //<~3000, too high will produce problems
+        //stressTestUserCount(1000, 1, 'localhost:6347');
         // stressTestUserCount(200, 1, 'localhost:6348');
     }
 )()

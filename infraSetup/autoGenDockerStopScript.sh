@@ -1,0 +1,1 @@
+sudo docker container stop mockstagram_pushgateway mockstagram_prometheus mockstagram_thanos_sidecar mockstagram_thanos_store mockstagram_thanos_querier mockstagram_mongodb

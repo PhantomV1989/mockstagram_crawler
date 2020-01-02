@@ -1,5 +1,7 @@
 global:
   scrape_interval:     1s
+  external_labels:
+    userRange: '12345'
 
 scrape_configs:
   - job_name: 'mockstagram'
