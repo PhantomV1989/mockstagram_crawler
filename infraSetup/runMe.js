@@ -1,9 +1,8 @@
 const fs = require('fs');
 let path = require('path');
 const conf = require('../config');
-const childProcess = require('child_process');
 let infraPath = path.dirname(process.argv[1]);
-let util = require('../commonUtil');
+const util = require('../commonUtil').Util;
 
 let storagePath = process.argv[2];
 let prometheusStoragePath = storagePath + '/prometheus';
@@ -21,13 +20,11 @@ async function initializeStorageFolders() {
     mkdirIfNotExist(prometheusStoragePath);
     mkdirIfNotExist(objstoreStoragePath);
     mkdirIfNotExist(mongoStoragePath);
-    console.log('Folders created. Please give rights for folders: sudo chmod -R 777 ' + storagePath);
-
 }
 
 class PrometheusNodeDockerScipts {
     static generatePrometheusPushgatewayCommand() {
-        return 'sudo docker run -d --rm -p ' + conf.pushgatewayPort + ':9091 --name ' + dockerNamePrefix + 'pushgateway prom/pushgateway'
+        return 'sudo docker run -d --rm -p ' + conf.pushgatewayPort + ':9091 --name ' + dockerNamePrefix + 'pushgateway prom/pushgateway --web.enable-admin-api'
     }
     static generatePrometheusDockerCommand() {
         let content = [
@@ -100,17 +97,32 @@ function generateThanosQuerierCommand() {
 
 function generateMongoDockerCommand() {
     let content = [
-        'sudo docker run -d -p ' + conf.mongoPort + ':27017 --rm ',
-        '-v ' + mongoStoragePath + ':/data/db ',
+        'sudo docker run -d -p ' + conf.mongoPort + ':27017 --rm',
+        '-v ' + mongoStoragePath + ':/data/db',
         '--name ' + dockerNamePrefix + 'mongodb  mongo:3.6',
     ];
-    return content.join('');
+    return content.join(' ');
+}
+
+function generatePushgatewayWiperCommand() {
+    let tmpFile = infraPath + '/_tmp.sh';
+    fs.writeFileSync(tmpFile, "while true; do curl -X PUT " + conf.pushgatewayService + "/api/v1/admin/wipe; sleep " + conf.crawlerIntervalSeconds * 3 + "; done");
+    let content = [
+        //sudo docker run --network=host --rm --entrypoint /bin/sh deleteme ./delme.sh
+        'sudo docker run -d --rm --network=host',
+        '-v ' + tmpFile + ':/usr/_tmp.sh',
+        '--entrypoint /bin/sh',
+        '--name ' + dockerNamePrefix + 'pushwiper  byrnedo/alpine-curl:0.1.8',
+        '/usr/_tmp.sh'
+    ];
+    return content.join(' ');
 }
 
 function generateDockerRunScript() {
     let dockerCommands = PrometheusNodeDockerScipts.generateScriptList().concat([
         generateThanosQuerierCommand(),
-        generateMongoDockerCommand()
+        generateMongoDockerCommand(),
+        generatePushgatewayWiperCommand()
     ]);
     return dockerCommands.join(' && ');
 }
@@ -122,7 +134,8 @@ function generateDockerStopScript() {
         'thanos_sidecar',
         'thanos_store',
         'thanos_querier',
-        'mongodb'
+        'mongodb',
+        'pushwiper'
     ];
     content = content.map(x => dockerNamePrefix + x).join(' ');
     return 'sudo docker container stop ' + content;
@@ -130,11 +143,19 @@ function generateDockerStopScript() {
 
 (
     async () => {
-        //scheckPossibleConflicts();
         await initializeStorageFolders();
+        console.log('Folders created. Please give rights for folders: \n\n\tsudo chmod -R 777 ' + storagePath + '\n\n');
         fs.writeFileSync(infraPath + '/autoGenDockerRunScript.sh', generateDockerRunScript());
         console.log('autoGenDockerRunScript.sh created.');
         fs.writeFileSync(infraPath + '/autoGenDockerStopScript.sh', generateDockerStopScript());
         console.log('autoGenDockerStopScript.sh created.');
+
+        await util.startNewChildProcess('chmod', ['-R', '777', storagePath]);
+        await util.startNewChildProcess('bash', [infraPath + '/autoGenDockerRunScript.sh']);
+        //await util.startNewChildProcess('bash', [infraPath + '/infraSetup/autoGenDockerRunScript.sh']);
+        console.log('Docker containers installed. To manage the containers related to this project, use the following commands:')
+        console.log('Setup:\n\n\tbash ./infraSetup/autoGenDockerRunScript.sh\n\n.');
+        console.log('List project containers\n\n\tsudo docker container ls|grep ' + dockerNamePrefix + '\n\n.');
+        console.log('Uninstall containers:\n\n\tbash ./infraSetup/autoGenDockerStopScript.sh\n\n.');
     }
 )()

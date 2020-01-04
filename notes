@@ -1,0 +1,54 @@
+curl -X POST localhost:3000/api/v1/influencers/is_suspicious  --data '{"pk": 1000001, "username":"influencer-100001","followerCount": 57166,"followingCount": 1328}'
+curl -X POST -H "Content-Type: text/plain" --data '{"pk": 1000001, "username":"influencer-100001","followerCount": 57166,"followingCount": 1328}' localhost:3000/api/v1/influencers/is_suspicious
+
+
+curl 'http://localhost:9090/api/v1/query_range?query=follower_count&start=1578117540&end=1578117700&step=10s'
+curl 'http://localhost:9090/api/v1/query_range?query=follower_count{userid=100}&start=1578117540&end=1578117700&step=10s'
+
+
+
+curl http://localhost:9090/api/v1/query_range?query=follower_count&start=2015-07-01T20:10:30.781Z&end=2015-07-01T20:11:00.781Z&step=15s
+curl 'http://localhost:9090/api/v1/query_range?query=follower_count&start=1578117540&end=1578117600&step=15s'
+
+curl -g 'http://localhost:9090/api/v1/query?' --data-urlencode 'match[]=follower_count{userid="1999981"}'
+
+curl -g 'http://localhost:9090/api/v1/series?' --data-urlencode 'match[]=follower_count{userid="1999981"}'
+curl -g 'http://localhost:9090/api/v1/series?' --data-urlencode 'match[]=follower_count'
+
+curl -G --data-urlencode 'query=follower_count{userid="1999981"}[20m:1m]' http://localhost:9090/api/v1/query
+
+curl -G --data-urlencode 'query=follower_count{userid="1999981"}[1m]' http://localhost:9090/api/v1/query
+
+{
+   "status":"success",
+   "data":{
+      "resultType":"vector",
+      "result":[
+         {
+            "metric":{
+               "__name__":"follower_count",
+               "env":"prod",
+               "exported_job":"30001",
+               "instance":"localhost:9091",
+               "job":"users1",
+               "userid":"1999981"
+            },
+            "value":[
+               1578042161.717,
+               "68908"
+            ]
+         }
+      ]
+   }
+}
+
+curl 'localhost:9090/api/v1/labels'
+curl http://localhost:19192/api/v1/label/userid/values
+curl http://localhost:19192/api/v1/query?query=node_cpu{instance="bj-rc-dptd-bluesharp-app-1-v-test-1:19000",mode="idle"}
+
+{"pk": 1000001,"followerCount": 57166,"followingCount": 1328}
+
+
+curl -G --data-urlencode 'query=follower_count{userid="1999981"}[1m]' http://localhost:9090/api/v1/query&start=2015-07-01T20:10:30.781Z&end=2015-07-01T20:11:00.781Z&step=15s
+
+$ curl 'http://localhost:9090/api/v1/query_range?query=follower_count{userid="1999981"}&start=2015-07-01T20:10:30.781Z&end=2015-07-01T20:11:00.781Z&step=15s'

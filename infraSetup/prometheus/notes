@@ -1,0 +1,2 @@
+Delete all data
+    curl -X POST -g 'http://localhost:19192/api/v1/admin/tsdb/delete_series?match[]={__name__=~".+"}'

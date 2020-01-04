@@ -1,28 +1,93 @@
 const body_parser = require("body-parser");
 const app = require('express')();
 const conf = require('../config');
-const util = require('../commonUtil');
-
+const Util = require('../commonUtil').Util;
 
 let crawlingTasks = {};
 let taskCount = 0; // ~2000 to 3000
-let pusher = {};
 let port = 0;
 let pushgatewayService = '';
+let userCache = {};
+let mongoCollection = undefined;
+
+async function updateUsersInMongoInterval(intervalSeconds) {  //might be bottleneck, mongo uses eventual consistency, but about 3000 over 10s, so don't update so many times. Or use multi masters
+    return setInterval(async () => {
+        Object.keys(crawlingTasks).forEach(async user => {
+            return new Promise(async (rs, rj) => {
+                mongoCollection = !mongoCollection ? await Util.getMongoCollectionPromise() : mongoCollection;
+                let currentCount = 0, avgFollower = 0, avgFollowing = 0, firstStartedTime = crawlingTasks[user]['startedTime'];
+                if (user in userCache) {
+                    currentCount = userCache[user]['currentCount'];
+                    avgFollower = userCache[user]['avgFollower'];
+                    avgFollowing = userCache[user]['avgFollowing'];
+                } else {
+                    let findRes = await mongoCollection.findOne({ '_id': user });
+                    if (findRes) {
+                        currentCount = findRes['currentCount'];
+                        avgFollower = findRes['avgFollower'];
+                        avgFollowing = findRes['avgFollowing'];
+                        firstStartedTime = findRes['firstStartedTime'];
+                        crawlingTasks[user]['startedTime'] = findRes['firstStartedTime'];
+                    }
+                };
+
+                avgFollower = (avgFollower * currentCount + crawlingTasks[user]['followerCount']) / (currentCount + 1);
+                avgFollowing = (avgFollowing * currentCount + crawlingTasks[user]['followingCount']) / (currentCount + 1);
+                currentCount += 1;
+
+                await mongoCollection.updateOne({ '_id': user }, {
+                    '$set':
+                    {
+                        '_id': user,
+                        'currentCount': currentCount,
+                        'avgFollower': avgFollower,
+                        'avgFollowing': avgFollowing,
+                        'lastCrawlTime': crawlingTasks[user]['lastUpdated'],
+                        'firstStartedTime': firstStartedTime,
+                        'worker': port
+                    }
+                }, { upsert: true }).then((v) => {
+                    userCache[user] = {
+                        'currentCount': currentCount,
+                        'avgFollower': avgFollower,
+                        'avgFollowing': avgFollowing,
+                    };
+                    rs(v);
+                }, (e) => {
+                    rj(e);
+                });
+            });
+        })
+    }, intervalSeconds * 1000)
+}
 
 async function pushDataInterval(intervalSeconds) {
     return setInterval(async () => {
-        let scrapeContent = [];
-        Object.keys(crawlingTasks).forEach(x => {
+        let scrapeContent = [
+            '# TYPE follower_count gauge',
+            '# TYPE following_count gauge',
+            '# TYPE follower_ratio gauge',
+        ];
+        Object.keys(crawlingTasks).forEach(async x => {
             let userLatestData = crawlingTasks[x];
-            let updatedTimeDifference = Math.round((Date.now() - userLatestData['lastUpdated']) / 10);
-            scrapeContent.push('follower_count{userid="' + x + '"} ' + userLatestData['followerCount']);
-            scrapeContent.push('following_count{userid="' + x + '"} ' + userLatestData['followingCount']);
-            scrapeContent.push('updated_time_difference_sec{userid="' + x + '"} ' + updatedTimeDifference);
-        });
-        let body = scrapeContent.join('\n') + '\n'
-        let res = await util.sendHttpRequest('post', body, pushgatewayService, '/metrics/job/' + port, 'application/x-www-form-urlencoded');
+            let updatedTimeDifference = Math.round((Date.now() - userLatestData['lastUpdated']) / 1000);
+            if (userLatestData['followerCount'] > -1 && updatedTimeDifference < conf.crawlerIntervalSeconds * 3) {
+                scrapeContent.push('follower_count{userid="' + x + '"} ' + userLatestData['followerCount']);
+                scrapeContent.push('following_count{userid="' + x + '"} ' + userLatestData['followingCount']);
+                scrapeContent.push('follower_ratio{userid="' + x + '"} ' + userLatestData['followerCount'] / userLatestData['followingCount']);
+            }
+            else if (userLatestData['lastUpdated'] > -1 && updatedTimeDifference > conf.crawlerTimeoutSeconds) {
+                userLatestData['cancellationToken'] = true;
+            }
 
+        });
+        let body = scrapeContent.join('\n') + '\n';
+        try {
+            let res = await Util.sendHttpRequest('post', body, pushgatewayService, '/metrics/job/' + port, 'application/x-www-form-urlencoded');
+        }
+        catch (e) {
+            if (e['error'].code != "ECONNRESET") throw e;  //intermittent connection
+        }
     }, intervalSeconds);
 }
 
@@ -34,7 +99,7 @@ function crawlingTaskInterval(user, intervalSeconds) {
             taskCount -= 1;
         } else {
             try {
-                let res = await util.sendHttpRequest('get', {}, conf.mockstagramApiService, '/api/v1/influencers/' + user);
+                let res = await Util.sendHttpRequest('get', {}, conf.mockstagramApiService, '/api/v1/influencers/' + user);
                 if ('error' in res) {
                     crawlingTasks[user]['cancellationToken'] = true;
                     console.log('Task cancelled ' + user + ' error:', res['error']);
@@ -48,7 +113,6 @@ function crawlingTaskInterval(user, intervalSeconds) {
             catch (e) {
                 console.log(e);
             }
-
         }
     }, intervalSeconds * 1000);
 }
@@ -57,12 +121,13 @@ function startUserCrawlingTask(userID, intervalSeconds) {
     if (!(userID in crawlingTasks)) { //avoid duplicate tasks
         crawlingTasks[userID] = {
             'intervalSeconds': intervalSeconds,
-            'followerCount': 0,
-            'followingCount': 0,
-            'lastUpdated': 0,
+            'followerCount': -1,
+            'followingCount': -1,
+            'lastUpdated': -1,
             'state': 'starting',
             'cancellationToken': false,
-            'task': crawlingTaskInterval(userID, intervalSeconds)
+            'task': crawlingTaskInterval(userID, intervalSeconds),
+            'startedTime': Date.now()
         };
         taskCount += 1;
         return 'Task started';
@@ -96,9 +161,6 @@ app.post('/start_crawling_users', async (req, res) => {
             let users = req.body['users'];
             let intervalSeconds = req.body['intervalS'];
             let responses = users.map(x => x + ': ' + startUserCrawlingTask(x, intervalSeconds));
-            if (Object.keys(pusher).length == 0) {
-                pusher = pushDataInterval(intervalSeconds);
-            }
             res.send({
                 'current_task_count': taskCount//responses
             });
@@ -130,21 +192,12 @@ app.post('/stop_crawling_users', (req, res) => {
     res.send('Crawling tasks stopped.');
 });
 
-app.get('/metrics', (req, res) => { // standard metrics scrapping format, ~ 200 users buffer
-    let scrapeContent = [];
-    Object.keys(crawlingTasks).forEach(x => {
-        let userLatestData = crawlingTasks[x];
-        if (userLatestData['state'] == 'running') { //go_gc_duration_seconds{quantile="1"} 0.000527106
-            scrapeContent = scrapeContent.concat(userLatestData['scrape']);
-        }
-    });
-    res.send(scrapeContent.join('\n') + '\n');
-});
-
 (
     async () => {
         port = process.argv[2];
         pushgatewayService = process.argv[3];
+        pushDataInterval(conf.crawlerIntervalSeconds);
+        updateUsersInMongoInterval(conf.crawlerIntervalSeconds * 2);  // 1 hour downsampling instead because i am using 1 node mongo, cant handle load atm.
         app.listen(process.argv[2], () => console.log('crawlerWorker listening on port ' + process.argv[2] + ', push target at ', pushgatewayService));
     }
 )()

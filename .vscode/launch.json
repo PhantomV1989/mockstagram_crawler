@@ -8,15 +8,22 @@
         //     "type": "node",
         //     "request": "launch",
         //     "name": "worker",
-        //     "program": "${workspaceFolder}/crawler/crawlerWorker.js", //}/tests/stressTest.js"  /crawler/crawlerWorker.js" 
-        //     "args": ["6347","localhost:9091"]
+        //     "program": "${workspaceFolder}/dataModel", //}crawlerManager  /crawler/crawlerWorker.js" 
+        //     "args": ["30000","localhost:9091"]
         // },
         {
             "type": "node",
             "request": "launch",
-            "name": "runMe",
-            "program": "${workspaceFolder}/infraSetup/runMe.js", //}/tests/stressTest.js"  /crawler/crawlerWorker.js" 
-            "args": ["/home/gh/profiler_store"]
-        }
+            "name": "worker",
+            "program": "${workspaceFolder}/crawler/crawlerManager.js", //}crawlerManager  /crawler/crawlerWorker.js" 
+            "args": ["30000","localhost:9091"]
+        },
+        // {
+        //     "type": "node",
+        //     "request": "launch",
+        //     "name": "runMe",
+        //     "program": "${workspaceFolder}/infraSetup/runMe.js", //}/tests/stressTest.js"  /crawler/crawlerWorker.js" 
+        //     "args": ["/home/gh/profiler_store"]
+        // }
     ]
 }

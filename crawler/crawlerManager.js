@@ -1,62 +1,32 @@
 const body_parser = require("body-parser");
 const app = require('express')();
 const conf = require('../config');
-const util = require('../commonUtil');
+const Util = require('../commonUtil').Util;
+const Routines = require('./crawlerRoutines').Routines;
+
 const host = conf.crawlerHost;
 const port = conf.crawlerManagerPort;
-const childProcess = require('child_process');
-
-const mongoClient = require('mongodb').MongoClient('mongodb://' + conf.mongodbService);
-const mongoDbName = 'mockstagram';
-const mongoDbConnection = new Promise((rs, rj) => { mongoClient.connect((err, client) => { if (err) rj(err); rs(client.db(mongoDbName)); }); })
-const mongoCollection = new Promise(async (rs, rj) => {
-    let db = await mongoDbConnection;
-    rs(db.collection('crawlertasks'));
-});
-
 
 let workerStatus = {};
 let workerIDIter = port;
-let userStatus = {};
-let targets = new Set();
+let mongoCollection = undefined;
 
 app.use(body_parser.json());
 
-async function startNewWorker(wID) {
-    return new Promise(async (rs, rj) => {
-        let processStatus = await childProcess.spawn('node', ['--max_old_space_size=8192',
-            '--optimize_for_size', '--stack_size=4096', '--nouse-idle-notification',
-            './crawler/crawlerWorker.js', wID]);
-        processStatus.stdout.on('data', async (data) => {
-            console.log('stdout: ' + data);
-            let workerSvc = host + ':' + wID;
-            if (!(workerSvc in targets)) {
-                targets.add(workerSvc);
-                rs(wID);
-            };
-        });
-        processStatus.stderr.on('data', async (data) => {
-            rs(String(data));
-        });
-        processStatus.on('close', async (data) => {
-            console.log('child process exited with' + data);
-            rs(wID);
-        });
-    })
+async function startNewWorker(wID, dest) {
+    return Util.startNewChildProcess('node', ['--max_old_space_size=8192',
+        '--optimize_for_size', '--stack_size=4096', '--nouse-idle-notification',
+        './crawler/crawlerWorker.js', wID, dest]);
 }
 
 async function sendTaskToWorker(body, worker) {
     let retry = 0;
     let workerSvc = host + ':' + worker;
-    body.users.forEach(async x => {
-        userStatus[x] = worker;
-        let r = (await mongoCollection).updateOne({ 'name': x, 'worker': worker }, { '$set': { 'name': x, 'worker': worker } }, { upsert: true });
-    });
 
     return new Promise(async (rs, rj) => {
         while (1) {
             try {
-                let workerResponse = await util.sendHttpRequest('post', body, workerSvc, '/start_crawling_users');
+                let workerResponse = await Util.sendHttpRequest('post', body, workerSvc, '/start_crawling_users');
                 workerStatus[worker] = +(workerResponse['current_task_count']);
                 rs(true);
                 break;
@@ -66,11 +36,12 @@ async function sendTaskToWorker(body, worker) {
                     rj(e);
                     break;
                 }
-                await util.sleep(2000);
+                await Util.sleep(2000);
             }
         }
     });
 }
+
 
 app.get('/', (req, res) => {
     res.send({
@@ -80,8 +51,21 @@ app.get('/', (req, res) => {
 });
 
 app.post('/start_crawling_users', async (req, res) => {
-    let users = Array.from(new Set(req.body['users'])).filter(x => !(x in userStatus));
-
+    let users = Array.from(new Set(req.body['users']));
+    let newUsers = [];
+    for (const i in users) {
+        let user = users[+i]
+        mongoCollection = !mongoCollection ? await Util.getMongoCollectionPromise() : mongoCollection;
+        let r = await mongoCollection.findOne({ '_id': user }).then(async r => {
+            if (!r) newUsers.push(user);
+            else if ((Date.now() - r['lastCrawledTimeStamp']) / 1000 > conf.crawlerTimeoutSeconds) {  //stale updates
+                await sendTaskToWorker({ 'users': [user], 'intervalS': req.body['intervalS'] }, worker);
+                let workerResponse = await Util.sendHttpRequest('post', { 'users': [user] }, host + ':' + r.worker, '/stop_crawling_users');
+                newUsers.push(user);
+            }
+        });
+    }
+    users = newUsers;
     Object.keys(workerStatus).forEach(async worker => {
         let freeSpace = conf.crawlerWorkerLimit - workerStatus[worker];
         if (freeSpace > 0) {
@@ -97,27 +81,20 @@ app.post('/start_crawling_users', async (req, res) => {
         if (a.length > 0) userChunks.push(a); users = _;
         if (users.length <= 0) break;
     }
+
     Promise.all(userChunks.map(async userChunk => {
         workerIDIter += 1;
-        await startNewWorker(workerIDIter).then(v => {
-            if (!isNaN(v)) return sendTaskToWorker({ 'users': userChunk, 'intervalS': req.body['intervalS'] }, v);
-            else {
-                console.log(v);
-            }
+        await startNewWorker(workerIDIter, conf.pushgatewayService).then(v => {
+            return sendTaskToWorker({ 'users': userChunk, 'intervalS': req.body['intervalS'] }, workerIDIter);
         });
     })).then((v) => {
         res.send('Tasks started.');
     });
 });
 
-app.post('/stop_crawling_users', (req, res) => {
-    res.send('Crawling tasks stopped.');
-});
-
 (
     async () => {
-        a = (await mongoCollection)
-        b=await  a.count();
+        Routines.updateSuspiciousStatusInterval();
         app.listen(port, () => console.log('crawlerManager listening on port ' + port));
     }
 )()
