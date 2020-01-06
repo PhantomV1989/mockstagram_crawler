@@ -80,13 +80,12 @@ class Util {
         })
     }
 
-    static async getMongoCollectionPromise() {
-        const mongoDbName = conf.mongoDbName;
+    static async getMongoCollectionPromise(mongoDbName = conf.mongoDbName, collection = conf.mongoCollection) {
         const mongoDbConnectionPromise = new Promise((rs, rj) => { mongoClient.connect((err, client) => { if (err) rj(err); rs(client.db(mongoDbName)); }); })
         const mongoCollectionPromise = new Promise(async (rs, rj) => {
             try {
                 let db = await mongoDbConnectionPromise;
-                rs(db.collection(conf.mongoCollection));
+                rs(db.collection(collection));
             }
             catch (e) { rj(e) };
         });

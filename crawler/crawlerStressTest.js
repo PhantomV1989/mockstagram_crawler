@@ -5,7 +5,8 @@ const util = require('../commonUtil').Util;
 async function stressTestUserCount(count, intervalSeconds, svc) {
     let users = [];
     for (i = 0; i < count; i++) {
-        users.push((1E5 + Math.round(Math.random() * 1E5)) * 10 + 1);
+        //users.push((1E5 + Math.round(Math.random() * 1E5)) * 10 + 1);
+        users.push(1000001);
     }
     let r = await util.sendHttpRequest('post', {
         'users': users,

@@ -1,10 +1,3 @@
-Manager
-    health checker
-    -check from Mongo before crawling user
-    -mongo update interval optimzation
-Drop fields Prometheus,
-is_suspicious, add buffer
+npm i 
+Add test to documentation
 doc strings
-"username": "influencer-100001", static value?
-read-heavy design for cache
-profiling
