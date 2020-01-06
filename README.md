@@ -48,11 +48,11 @@ Detailed design, explanation, setup and profiling are in **documentation.pdf**.
 # Usage
 The crawler manager listens to port 30000. To start crawling tasks for :pk values, send HTTP POST request to /start_crawling_users with the following format:
 
- >POST localhost:30000/start_crawling_users
-{
-    'users': [1000001, 1996161, 1787381],
-    'intervalSec': 5
-}
+>POST localhost:30000/start_crawling_users
+>{
+>    'users': [1000001, 1996161, 1787381],
+>    'intervalSec': 5
+>}
 
 Alternatively, you can use a stress test function as follows:
 
