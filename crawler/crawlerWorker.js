@@ -13,8 +13,7 @@ let mongoCollection = undefined;
 async function updateUsersInMongoInterval(intervalSeconds) {  //might be bottleneck, mongo uses eventual consistency, but about 3000 over 10s, so don't update so many times. Or use multi masters
     return setInterval(async () => {
         Object.keys(crawlingTasks).forEach(async user => {
-            return new Promise(async (rs, rj) => {
-                mongoCollection = !mongoCollection ? await Util.getMongoCollectionPromise() : mongoCollection;
+            if (crawlingTasks[user]['followerCount'] > -1) {
                 let currentCount = 0, avgFollower = 0, avgFollowing = 0, firstStartedTime = crawlingTasks[user]['startedTime'];
                 if (user in userCache) {
                     currentCount = userCache[user]['currentCount'];
@@ -39,6 +38,7 @@ async function updateUsersInMongoInterval(intervalSeconds) {  //might be bottlen
                     '$set':
                     {
                         '_id': user,
+                        'username': crawlingTasks[user]['username'],
                         'currentCount': currentCount,
                         'avgFollower': avgFollower,
                         'avgFollowing': avgFollowing,
@@ -52,11 +52,10 @@ async function updateUsersInMongoInterval(intervalSeconds) {  //might be bottlen
                         'avgFollower': avgFollower,
                         'avgFollowing': avgFollowing,
                     };
-                    rs(v);
                 }, (e) => {
-                    rj(e);
+                    console.log(e);
                 });
-            });
+            }
         })
     }, intervalSeconds * 1000)
 }
@@ -104,6 +103,7 @@ function crawlingTaskInterval(user, intervalSeconds) {
                     crawlingTasks[user]['cancellationToken'] = true;
                     console.log('Task cancelled ' + user + ' error:', res['error']);
                 } else {
+                    crawlingTasks[user]['username'] = res['username'];
                     crawlingTasks[user]['followerCount'] = res['followerCount'];
                     crawlingTasks[user]['followingCount'] = res['followingCount'];
                     crawlingTasks[user]['lastUpdated'] = Date.now();
@@ -151,15 +151,21 @@ app.get('/get_task_count', (req, res) => {
     })
 });
 
+app.get('/get_current_tasks', (req, res) => {
+    res.send({
+        'tasks': Object.keys(crawlingTasks)
+    })
+});
+
 app.post('/start_crawling_users', async (req, res) => {
     if (Object.keys(req.body).length == 0) {
         res.send({
-            'Error': 'Please use body format {"users":[1000001], "intervalS":5}'
+            'Error': 'Please use body format {"users":[1000001], "intervalSec":5}'
         });
     } else {
         try {
             let users = req.body['users'];
-            let intervalSeconds = req.body['intervalS'];
+            let intervalSeconds = req.body['intervalSec'];
             let responses = users.map(x => x + ': ' + startUserCrawlingTask(x, intervalSeconds));
             res.send({
                 'current_task_count': taskCount//responses
@@ -194,6 +200,7 @@ app.post('/stop_crawling_users', (req, res) => {
 
 (
     async () => {
+        mongoCollection = await Util.getMongoCollectionPromise();
         port = process.argv[2];
         pushgatewayService = process.argv[3];
         pushDataInterval(conf.crawlerIntervalSeconds);

@@ -28,7 +28,7 @@ class PrometheusNodeDockerScipts {
     }
     static generatePrometheusDockerCommand() {
         let content = [
-            'sudo docker run -d --rm --network=host',
+            'sudo docker run -d --rm --network=host -p ' + conf.prometheusPort + ':9090',
             '-v ' + infraPath + '/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml',
             '-v ' + infraPath + '/prometheus/targets.json:/etc/prometheus/targets.json',
             '-v ' + prometheusStoragePath + ':/prometheus',
@@ -150,12 +150,14 @@ function generateDockerStopScript() {
         fs.writeFileSync(infraPath + '/autoGenDockerStopScript.sh', generateDockerStopScript());
         console.log('autoGenDockerStopScript.sh created.');
 
-        await util.startNewChildProcess('chmod', ['-R', '777', storagePath]);
-        await util.startNewChildProcess('bash', [infraPath + '/autoGenDockerRunScript.sh']);
+        await util.startNewChildProcess('chmod', ['-R', '777', storagePath], true);
+        await util.startNewChildProcess('bash', [infraPath + '/autoGenDockerRunScript.sh'], true);
         //await util.startNewChildProcess('bash', [infraPath + '/infraSetup/autoGenDockerRunScript.sh']);
+        await util.sleep(10000);
         console.log('Docker containers installed. To manage the containers related to this project, use the following commands:')
         console.log('Setup:\n\n\tbash ./infraSetup/autoGenDockerRunScript.sh\n\n.');
         console.log('List project containers\n\n\tsudo docker container ls|grep ' + dockerNamePrefix + '\n\n.');
         console.log('Uninstall containers:\n\n\tbash ./infraSetup/autoGenDockerStopScript.sh\n\n.');
+        console.log('Remove contents from storage folders:\n\n\tsudo rm -r ' + storagePath + '/*\n\n.');
     }
 )()

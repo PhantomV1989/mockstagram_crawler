@@ -25,6 +25,12 @@ module.exports.pushgatewayHost = pushgatewayHost;
 module.exports.pushgatewayPort = pushgatewayPort;
 module.exports.pushgatewayService = pushgatewayHost + ':' + pushgatewayPort;
 
+//prometheus
+let prometheusHost = 'localhost';
+let prometheusPort = 9090;
+module.exports.prometheusPort = prometheusPort;
+module.exports.prometheusService = prometheusHost + ':' + prometheusPort;
+
 //thanos
 let thanosHost = 'localhost'// cant change ATM
 let thanosPort = 19192

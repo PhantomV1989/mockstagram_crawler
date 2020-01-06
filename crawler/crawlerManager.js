@@ -55,15 +55,15 @@ app.post('/start_crawling_users', async (req, res) => {
     let newUsers = [];
     for (const i in users) {
         let user = users[+i]
-        mongoCollection = !mongoCollection ? await Util.getMongoCollectionPromise() : mongoCollection;
-        let r = await mongoCollection.findOne({ '_id': user }).then(async r => {
-            if (!r) newUsers.push(user);
-            else if ((Date.now() - r['lastCrawledTimeStamp']) / 1000 > conf.crawlerTimeoutSeconds) {  //stale updates
-                await sendTaskToWorker({ 'users': [user], 'intervalS': req.body['intervalS'] }, worker);
+        let r = await mongoCollection.findOne({ '_id': '' + user });
+        if (!r) newUsers.push(user);
+        else if ((Date.now() - r['lastCrawlTime']) / 1000 > conf.crawlerTimeoutSeconds) {  //stale updates
+            try {  // try cancelling task for stale user
                 let workerResponse = await Util.sendHttpRequest('post', { 'users': [user] }, host + ':' + r.worker, '/stop_crawling_users');
-                newUsers.push(user);
             }
-        });
+            catch (e) { } // the worker may already have stopped the task, or nonexistent
+            newUsers.push(user);
+        }
     }
     users = newUsers;
     Object.keys(workerStatus).forEach(async worker => {
@@ -71,7 +71,7 @@ app.post('/start_crawling_users', async (req, res) => {
         if (freeSpace > 0) {
             let usersToSend = users.slice(0, freeSpace);
             users = users.slice(freeSpace);
-            await sendTaskToWorker({ 'users': usersToSend, 'intervalS': req.body['intervalS'] }, worker);
+            await sendTaskToWorker({ 'users': usersToSend, 'intervalSec': req.body['intervalSec'] }, worker);
         }
     });
     // left overs
@@ -85,7 +85,7 @@ app.post('/start_crawling_users', async (req, res) => {
     Promise.all(userChunks.map(async userChunk => {
         workerIDIter += 1;
         await startNewWorker(workerIDIter, conf.pushgatewayService).then(v => {
-            return sendTaskToWorker({ 'users': userChunk, 'intervalS': req.body['intervalS'] }, workerIDIter);
+            return sendTaskToWorker({ 'users': userChunk, 'intervalSec': req.body['intervalSec'] }, workerIDIter);
         });
     })).then((v) => {
         res.send('Tasks started.');
@@ -94,6 +94,7 @@ app.post('/start_crawling_users', async (req, res) => {
 
 (
     async () => {
+        mongoCollection = !mongoCollection ? await Util.getMongoCollectionPromise() : mongoCollection;
         Routines.updateSuspiciousStatusInterval();
         app.listen(port, () => console.log('crawlerManager listening on port ' + port));
     }

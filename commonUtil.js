@@ -62,19 +62,19 @@ class Util {
         })
     }
 
-    static async startNewChildProcess(cmd, args) {
+    static async startNewChildProcess(cmd, args, supress = false) {
         return new Promise(async (rs, rj) => {
             let processStatus = await childProcess.spawn(cmd, args);
             processStatus.stdout.on('data', async (data) => {
-                console.log('stdout: ' + data);
+                if (!supress) console.log('stdout: ' + data);
                 rs(String(data));
             });
             processStatus.stderr.on('data', async (data) => {
-                console.log('stderr: ' + data);
+                if (!supress) console.log('stderr: ' + data);
                 rs(String(data));
             });
             processStatus.on('close', async (data) => {
-                console.log('child process exited with' + data);
+                if (!supress) console.log('child process exited with' + data);
                 rs(String(data));
             });
         })

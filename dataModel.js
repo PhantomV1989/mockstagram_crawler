@@ -1,16 +1,14 @@
 // centralized data model
 const conf = require('./config');
 const Util = require('./commonUtil').Util;
-let mongoCollection = undefined;
 
 class DataModel {
     static async getAllUsers() {
         return ThanosHelper.getAllUsers();
     }
 
-    static async getUserFirstData(user) {
+    static async getUserFirstData(user, mongoCollection) {
         // user in string
-        mongoCollection = !mongoCollection ? await Util.getMongoCollectionPromise() : mongoCollection;
         let findRes = await mongoCollection.findOne({ '_id': user });
         if (findRes) {
             let firstStartedTime = Math.round(findRes['firstStartedTime'] / 1000); // a range, -3 last digits
@@ -22,12 +20,12 @@ class DataModel {
         }
     }
 
-    static async getUserLastData(user) {
-        mongoCollection = !mongoCollection ? await Util.getMongoCollectionPromise() : mongoCollection;
+    static async getUserLastData(user, mongoCollection) {
         let findRes = await mongoCollection.findOne({ '_id': user });
         if (findRes) {
             let lastCrawlTime = Math.round(findRes['lastCrawlTime'] / 1000); // a range, -3 last digits
-            return await ThanosHelper.getUserData(user, lastCrawlTime, lastCrawlTime);
+            let _ = await ThanosHelper.getUserData(user, lastCrawlTime, lastCrawlTime);
+            return _;
         }
         else {
             return undefined;
