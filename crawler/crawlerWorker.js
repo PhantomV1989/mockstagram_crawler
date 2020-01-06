@@ -11,6 +11,16 @@ let userCache = {};
 let mongoCollection = undefined;
 
 async function updateUsersInMongoInterval(intervalSeconds) {  //might be bottleneck, mongo uses eventual consistency, but about 3000 over 10s, so don't update so many times. Or use multi masters
+    /**
+     * This is for updating aggregated metrics (eg. average follower count).
+     * The interval can be decided independently so we have the freedom to downsample these data 
+     * so as to avoid unnecessary resource consumption.
+     * This works by having an internal cache(called userCache) that suppose to reflect actual data
+     * in the mongodb counterpart so as to avoid unnecessary queries.
+     * It uses cache-aside policy, meaning it loads data from mongodb if there isnt any in the cache
+     * then subsequently uses the cache as reference for future calculations
+     * Returns interval id.
+     */
     return setInterval(async () => {
         Object.keys(crawlingTasks).forEach(async user => {
             if (crawlingTasks[user]['followerCount'] > -1) {
@@ -61,6 +71,13 @@ async function updateUsersInMongoInterval(intervalSeconds) {  //might be bottlen
 }
 
 async function pushDataInterval(intervalSeconds) {
+    /**
+     * This loop pushes data to Prometheus's pushgateway.
+     * The pushing loop is separated from the crawling task because of
+     * the way Prometheus handles data from endpoint. Pushing must be seen as a batch, or else 
+     * independent pushes will result in Prometheus treating other data as missing
+     * Returns interval id.
+     */
     return setInterval(async () => {
         let scrapeContent = [
             '# TYPE follower_count gauge',
@@ -91,6 +108,10 @@ async function pushDataInterval(intervalSeconds) {
 }
 
 function crawlingTaskInterval(user, intervalSeconds) {
+    /**
+     * Handles crawling for mockstagram endpoint. 
+     * Also handles task cancellation via a token.
+     */
     return setInterval(async () => {
         if (crawlingTasks[user]['cancellationToken']) {
             clearInterval(crawlingTasks[user]['task']);
@@ -117,16 +138,20 @@ function crawlingTaskInterval(user, intervalSeconds) {
     }, intervalSeconds * 1000);
 }
 
-function startUserCrawlingTask(userID, intervalSeconds) {
-    if (!(userID in crawlingTasks)) { //avoid duplicate tasks
-        crawlingTasks[userID] = {
+function startUserCrawlingTask(user, intervalSeconds) {
+    /**
+     * The initiation of crawling tasks. This is done only once for each unique :pk value.
+     * Keeps track of task status in a lookup table, crawlingTasks
+     */
+    if (!(user in crawlingTasks)) { //avoid duplicate tasks
+        crawlingTasks[user] = {
             'intervalSeconds': intervalSeconds,
             'followerCount': -1,
             'followingCount': -1,
             'lastUpdated': -1,
             'state': 'starting',
             'cancellationToken': false,
-            'task': crawlingTaskInterval(userID, intervalSeconds),
+            'task': crawlingTaskInterval(user, intervalSeconds),
             'startedTime': Date.now()
         };
         taskCount += 1;

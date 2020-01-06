@@ -4,6 +4,12 @@ const DataModel = require('../dataModel').DataModel;
 
 class Routines {
     static async  _updateSuspiciousStatus(mongoCollection) {
+        /**
+         * Updates suspicious status for existing users.
+         * Retrieves data from both mongodb and Thanos cluster to form request body,
+         * before sending it to /is_suspicious service
+         * mongoCollection, reused opened mongodb's collection connection.
+         */
         let allUsers = await DataModel.getAllUsers();
         for (const i in allUsers) {
             let user = allUsers[i];
@@ -22,14 +28,11 @@ class Routines {
     }
 
     static async updateSuspiciousStatusInterval(mongoCollection, intervalSeconds = 24 * 60 * 60) {
+        /**
+         * An interval version of _updateSuspiciousStatus
+         */
         return setInterval(async () => {
             this._updateSuspiciousStatus(mongoCollection);
-        }, intervalSeconds * 1000);
-    }
-
-    static async  refreshPushgatewayInterval(intervalSeconds = conf.crawlerIntervalSeconds * 3) { //unused, now using docker
-        return setInterval(async () => {
-            let processStatus = Util.startNewChildProcess('curl', ['-X', 'PUT', conf.pushgatewayService + '/api/v1/admin/wipe']);
         }, intervalSeconds * 1000);
     }
 }
