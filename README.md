@@ -33,7 +33,7 @@ Detailed design, explanation, setup and profiling are in **documentation.pdf**.
 
 # Setup summary
 
-- create a folder `/choose/a/folder` on your machine for storing data from this setup
+- create a folder `/choose/a/folder` in your machine for storing data from this setup
 
 - clone this repo
 
